@@ -1,0 +1,177 @@
+Sub Get_Data()
+'
+' Get_Data Macro
+'
+
+'
+Dim ticker As String, sday, smonth, syear, eday, emonth, eyear, EMA As Long
+Columns("A:H").ClearContents
+
+ticker = Range("K1")
+sday = Day(Range("K2"))
+smonth = Month(Range("K2")) - 1
+syear = Year(Range("K2"))
+eday = Day(Range("K3"))
+emonth = Month(Range("K3")) - 1
+eyear = Year(Range("K3"))
+EMA = Range("K4")
+
+    With ActiveSheet.QueryTables.Add(Connection:= _
+        "TEXT;http://real-chart.finance.yahoo.com/table.csv?s=" & ticker & " &d=" & emonth & "&e=" & eday & "&f=" & eyear & "&g=d&a=" & smonth & "&b=" & sday & "&c=" & syear & "&ignore=.csv" _
+        , Destination:=Range("$A$1"))
+        .Name = "table.csv?s=" & ticker & "&d=" & emonth & "&e=" & eday & "&f=" & eyear & "&g=d&a=" & smonth & "&b=" & sday & "&c=" & syear & "&ignore="
+        .FieldNames = True
+        .RowNumbers = False
+        .FillAdjacentFormulas = False
+        .PreserveFormatting = True
+        .RefreshOnFileOpen = False
+        .RefreshStyle = xlInsertDeleteCells
+        .SavePassword = False
+        .SaveData = True
+        .AdjustColumnWidth = True
+        .RefreshPeriod = 0
+        .TextFilePromptOnRefresh = False
+        .TextFilePlatform = 437
+        .TextFileStartRow = 1
+        .TextFileParseType = xlDelimited
+        .TextFileTextQualifier = xlTextQualifierDoubleQuote
+        .TextFileConsecutiveDelimiter = False
+        .TextFileTabDelimiter = True
+        .TextFileSemicolonDelimiter = False
+        .TextFileCommaDelimiter = True
+        .TextFileSpaceDelimiter = False
+        .TextFileColumnDataTypes = Array(5, 1, 1, 1, 1, 1, 1)
+        .TextFileTrailingMinusNumbers = True
+        .Refresh BackgroundQuery:=False
+        Call Macro2(ticker, EMA)
+    End With
+End Sub
+Sub Macro2(ByRef r As String, ByRef e As Long)
+    
+'Find the next empty cell
+
+    Dim row_number As Long
+    Dim lowerCase As String
+    Dim ticker As String
+    Dim EMA As Long
+    Dim ExtraMA As Long
+    Dim SquareRange As Long
+
+    EMA = e
+    ExtraMA = e + 1
+    lowerCase = r
+    ticker = UCase(lowerCase)
+     
+    Range("H1").Value = "Return"
+    row_number = 1
+    
+    Do
+    DoEvents
+    row_number = row_number + 1
+    item_in_review = Sheet1.Range("A" & row_number)
+    Loop Until item_in_review = ""
+    
+    row_number = row_number - 2
+    Range("H2").Value = "=RC[-1]/R[1]C[-1]-1"
+    Range("H2").Select
+    Selection.AutoFill Destination:=Range("H2:H" & row_number)
+    
+'Hide unused columns
+ 
+    Columns("B:F").Select
+    Selection.EntireColumn.Hidden = True
+
+'Calculate Return and Standard deviation of stock for the period T
+
+    Range("N1").Value = Application.WorksheetFunction.Sum(Range("H2:H" & row_number))
+    Range("N2").Value = Application.WorksheetFunction.StDev(Range("H2:H" & row_number))
+    SquareRange = 252^0.5
+    Range("N3").Value = Range("N2").Value * SquareRange
+   
+'Copy Data to a new sheet and Sort by Date
+
+    Range("A1:H" & row_number).Select
+    Selection.Copy
+    Sheets.Add After:=ActiveSheet
+    ActiveSheet.Name = ticker
+    Selection.PasteSpecial Paste:=xlPasteValues, Operation:=xlNone, SkipBlanks _
+        :=False, Transpose:=False
+    Columns("A:A").EntireColumn.AutoFit
+
+    Selection.AutoFilter
+    ActiveSheet.AutoFilter.Sort.SortFields.Clear
+    ActiveSheet.AutoFilter.Sort.SortFields.Add Key:=Range _
+        ("A1:A" & row_number), SortOn:=xlSortOnValues, Order:=xlAscending, DataOption:= _
+        xlSortNormal
+    With ActiveSheet.AutoFilter.Sort
+        .Header = xlYes
+        .MatchCase = False
+        .Orientation = xlTopToBottom
+        .SortMethod = xlPinYin
+        .Apply
+    End With
+    
+    Selection.AutoFilter
+    Columns("A:A").Select
+    Selection.NumberFormat = "m/d/yyyy"
+    Columns("H:H").Select
+    Selection.NumberFormat = "0.00%"
+    Columns("H:H").Select
+    
+    Range("J" & ExtraMA).Value = Application.WorksheetFunction.Average(Range("G2:G" & EMA))
+    Range("J" & ExtraMA).Select
+    ActiveCell.Offset(1, 0).Select
+    ActiveCell.Value = "=RC[-3]*2/(" & EMA & "+1)+R[-1]C*(1-2/(" & EMA & "+1))"
+    row_number = ExtraMA + 1
+    Do
+    DoEvents
+    row_number = row_number + 1
+    item_in_review = Sheet1.Range("G" & row_number)
+    Loop Until item_in_review = ""
+    row_number = row_number - 2
+    ExtraMA = ExtraMA + 1
+    Range("J" & ExtraMA).Select
+    Selection.AutoFill Destination:=Range(Cells(ExtraMA, 10), Cells(row_number, 10))
+    
+    Dim theSheet As String
+    theSheet = ActiveSheet.Name
+    Dim EMAChart As ChartObject
+        Set EMAChart = ActiveSheet.ChartObjects.Add(Left:=Range("L12").Left, Width:=500, Top:=Range("L12").Top, Height:=300)
+        With EMAChart.Chart
+            .Parent.Name = "EMA Chart"
+            With .SeriesCollection.NewSeries
+                .ChartType = xlLine
+                .Values = Sheets(theSheet).Range(Cells(ExtraMA, 7), Cells(row_number, 7))
+                .XValues = Sheets(theSheet).Range(Cells(ExtraMA, 1), Cells(row_number, 1))
+                .Format.Line.Weight = 1
+                .Name = "Price"
+            End With
+            
+            With .SeriesCollection.NewSeries
+                .ChartType = xlLine
+                .AxisGroup = xlPrimary
+                .Values = Sheets(theSheet).Range(Cells(ExtraMA, 10), Cells(row_number, 10))
+                .Name = "EMA"
+                .Border.ColorIndex = 1
+                .Format.Line.Weight = 1
+            End With
+            
+            .Axes(xlValue, xlPrimary).HasTitle = True
+            .Axes(xlValue, xlPrimary).AxisTitle.Characters.Text = "Price"
+            .Axes(xlValue, xlPrimary).MaximumScale = WorksheetFunction.Max(Sheets(theSheet).Range(Cells(ExtraMA, 7), Cells(row_number, 7)))
+            .Axes(xlValue, xlPrimary).MinimumScale = Int(WorksheetFunction.Min(Sheets(theSheet).Range(Cells(ExtraMA, 7), Cells(row_number, 7))))
+            .Legend.Position = xlLegendPositionRight
+            .SetElement (msoElementChartTitleAboveChart)
+            .ChartTitle.Text = "Close Price & " & EMA & "-Day EMA"
+        End With
+        
+    'Range("A1:A68,G1:G68,H1:H68").Select
+    'ActiveSheet.Shapes.AddChart2(227, xlLine).Select
+   ' With Sheets(theSheet)
+  '      ActiveChart.SetSourceData Source:=.Range( _
+ '       "Cells(ExtraMA, 1), Cells(row_number, 1)" & "Cells(ExtraMA, 7), Cells(row_number, 7)")
+'    End With
+
+End Sub
+
+
